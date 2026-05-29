@@ -68,5 +68,10 @@ All services must return errors in this JSON shape:
 - **Python**: Patch `app.router.lifespan_context` during unit-level integration tests to bypass real infrastructure setup. Use `TestClient`.
 - **Go**: Use `httptest.NewRecorder` for handler validation and `testify/assert` for expressive checks.
 
+### Load Testing
+- **Framework**: [Locust](https://locust.io/) for Python-based distributed load generation.
+- **Traffic Shape**: Maintain a 4:1 ratio of reads (`GET /feed`) to writes (`POST /posts`) to simulate realistic usage patterns.
+- **Authentication**: Virtual users must generate valid JWTs in `on_start` to pass gateway security boundaries.
+
 ## 🛠 Operational Overview
 For build commands, port mappings, and local deployment instructions, refer to the **[README.md](./README.md)**.

@@ -51,6 +51,7 @@ docker compose up -d --build
 ### Verification & Testing
 - **Python Suite**: `export PYTHONPATH=. && uv run pytest tests/test_main.py`
 - **Go Suite**: `cd event-service && go test -v .`
+- **Load Testing**: `uv run locust -f tests/load/locustfile.py --host https://localhost:8889`
 - **Migrations**: `uv run alembic revision -m "your description"`
 
 ---
