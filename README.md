@@ -1,21 +1,23 @@
-# ScaleBreeze Feed Service
+# ScaleBreeze
 
-A high-performance, production-ready FastAPI template designed for local development on Ubuntu/Linux.
+A production-grade, multi-service architecture for high-performance feed management and event streaming. Built for local development on Ubuntu/Linux with a focus on security, observability, and scalability.
 
-## 🚀 Tech Stack & Industry Standards
+## 🚀 System Architecture
 
-### Backend Architecture
-- **FastAPI**: Modern, async Python framework.
-- **asyncpg**: Direct PostgreSQL interaction with a custom-tuned connection pool (min: 5, max: 50).
-- **Redis 7**: Cache-aside implementation on `GET /posts` with `X-Cache` headers and 60s TTL.
-- **Apache Kafka 3.7.0**: Configured in **KRaft mode** (no Zookeeper) for modern, simplified event streaming.
+### 1. Feed Service (Python/FastAPI)
+- **High-Performance Async**: Powered by `FastAPI` and `asyncpg` with a custom connection pool (min: 5, max: 50).
+- **Cache-Aside Pattern**: Integrated with **Redis 7** for optimized data retrieval with `X-Cache` HIT/MISS tracking.
+- **Automated Migrations**: Schema evolution managed by **Alembic** (Async template).
 
-### Infrastructure & DevOps
-- **uv**: The next-generation Python package manager for lightning-fast builds and reproducible environments via `uv.lock`.
-- **Alembic**: Managed async database migrations, integrated into the container startup sequence.
-- **Nginx Reverse Proxy**: Handles routing for both HTTP (80) and HTTPS (443) with X-Request-ID propagation.
-- **Persistence**: Named Docker volumes for PostgreSQL, Redis, and Kafka to ensure data survival across restarts.
-- **Structured Logging**: Every request emits a JSON log containing `timestamp`, `request_id`, `method`, `path`, `status_code`, `duration_ms`, and `client_ip`.
+### 2. Event Service (Go)
+- **Bidirectional Messaging**: High-performance event producer and consumer using `net/http` and `segmentio/kafka-go`.
+- **Resilient Delivery**: Implements `connectWithRetry` with exponential backoff and **graceful shutdown** to prevent data loss.
+- **Kafka integration**: Communicates via the `post-events` topic in a KRaft-mode cluster.
+
+### 3. API Gateway (Nginx)
+- **Security First**: Enforced SSL/TLS (HTTPS) with automated 301 redirection from HTTP.
+- **Traffic Control**: IP-based **Rate Limiting** (100r/m) with burst protection.
+- **Observability**: JSON-formatted analytics logs and custom JSON error responses (429, 502, 504).
 
 ---
 
@@ -23,61 +25,38 @@ A high-performance, production-ready FastAPI template designed for local develop
 
 ### Prerequisites
 - Docker & Docker Compose
-- [uv](https://github.com/astral-sh/uv) (optional, for local development)
+- [uv](https://github.com/astral-sh/uv) (recommended for local Python dev)
+- Go 1.23+ (optional for local Go dev)
 
-### Running the Stack
+### Launching the Stack
 ```bash
 docker compose up -d --build
 ```
-- **API**: `http://localhost:8888`
-- **Events**: `http://localhost:8888/events` (POST)
-- **Postgres**: `localhost:5432`
-- **Kafka**: `localhost:9092` (internal) / `localhost:9094` (external)
+- **Gateway (HTTPS)**: `https://localhost:8889`
+- **Gateway (HTTP Redirect)**: `http://localhost:8888`
+- **PostgreSQL**: `localhost:5432` (User: `sb_app`)
+- **Redis**: `localhost:6379`
+- **Kafka**: `localhost:9094` (External Broker)
 
-### Managing Migrations
-Migrations run automatically on container startup. To create a new one:
-```bash
-uv run alembic revision -m "your description"
-```
-
-### Running Tests
-#### Python (Feed Service)
-```bash
-export PYTHONPATH=.
-uv run pytest tests/test_main.py
-```
-
-#### Go (Event Service)
-```bash
-cd event-service
-go test -v .
-```
+### Core Workflows
+| Task | Command |
+| :--- | :--- |
+| **Python Tests** | `export PYTHONPATH=. && uv run pytest tests/test_main.py` |
+| **Go Tests** | `cd event-service && go test -v .` |
+| **Create Migration** | `uv run alembic revision -m "description"` |
+| **View API Logs** | `docker compose logs -f api` |
 
 ---
 
-## 🛡 Security & Best Practices (Implemented)
-- **Non-Privileged Users**: All service containers (API, Events) run as non-root users (`scalebreeze`) for defense-in-depth isolation.
-- **SSL/TLS & HSTS**: Enforced HTTPS with a 1-year HSTS policy and modern cipher suites.
-- **Security Headers**: Nginx is configured with strict Content-Security-Policy (CSP), X-Frame-Options (DENY), and X-Content-Type-Options (nosniff).
-- **CORS Policies**: Explicit cross-origin resource sharing allowed only for the gateway origin.
-- **Rate Limiting**: IP-based throttling (100r/m) with burst handling.
-- **Graceful Shutdown**: All services handle termination signals to prevent data loss.
+## 🛡 Security & Hardening
+ScaleBreeze adheres to strict production security standards:
+- **Defense in Depth**: All service containers run as **non-privileged users** (`scalebreeze`) with **read-only root filesystems**.
+- **Least Privilege**: Applications connect to PostgreSQL using a restricted `sb_app` user instead of the superuser.
+- **Resource Insulation**: Strict CPU and Memory limits are applied to every container to mitigate local DoS.
+- **Transport Security**: TLS 1.3 enforced with a 1-year HSTS policy and restrictive Content-Security-Policy (CSP).
 
 ---
 
-## 📈 Future Improvements (Gap Analysis)
-To move from "Production-Quality" to "Enterprise-Grade," consider these next steps:
-
-1. **Observability (OpenTelemetry)**:
-   - Integrate `opentelemetry-python` for distributed tracing and Prometheus metrics.
-2. **Security (Secret Management)**:
-   - Move from `.env` files to a secure provider like HashiCorp Vault or AWS Secrets Manager.
-3. **Validation (Pydantic v2 Features)**:
-   - Leverage Pydantic's `@field_validator` for more complex business logic checks beyond character length.
-4. **Resiliency (Circuit Breakers)**:
-   - Use libraries like `resilience4j` (or Python equivalents) for Kafka and DB interactions to handle transient failures.
-5. **CI/CD (Pre-commit & Linting)**:
-   - Add a `.pre-commit-config.yaml` with `ruff` and `mypy` for static analysis and formatting.
-6. **Testing**:
-   - Implement Integration tests using `pytest-asyncio` and `TestClient`.
-ntegration tests using `pytest-asyncio` and `TestClient`.
+## 📖 Documentation
+- For internal architectural rules, coding standards, and AI-agent instructions, see **[GEMINI.md](./GEMINI.md)**.
+- For database schema initialization logic, see **`init-db/`**.

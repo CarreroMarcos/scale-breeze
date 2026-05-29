@@ -1,96 +1,61 @@
-# ScaleBreeze Feed Service - Project Context
+# ScaleBreeze - Engineering Standards & AI Context
 
-This document serves as the primary instructional context for Gemini CLI when working within the `scalebreeze` repository.
+This document serves as the primary instructional context for Gemini CLI and other AI agents. It defines the architectural rules, coding conventions, and de facto contracts of the `scalebreeze` repository.
 
-## Project Overview
-ScaleBreeze Feed Service is a high-performance, asynchronous FastAPI application designed as a production-ready template. It features a modern tech stack focused on performance, scalability, and observability.
+## 🏛 Architectural Rules
 
-### Core Tech Stack
-- **Frameworks**: [FastAPI](https://fastapi.tiangolo.com/) (Python 3.11+), Go 1.23+
-- **Package Management**: [uv](https://github.com/astral-sh/uv), Go Modules
-- **Database**: PostgreSQL 16 (via `asyncpg` for raw performance)
-- **Caching**: Redis 7 (via `redis-py`)
-- **Messaging**: Apache Kafka 3.7.0 (KRaft mode, no Zookeeper)
-- **Migrations**: Alembic (using `sqlalchemy[asyncio]`)
-- **Proxy**: Nginx (handling HTTP 80 and HTTPS 443 placeholders)
-- **Containerization**: Docker & Docker Compose
+### 1. Multi-Language Service Strategy
+- **Feed Service (Python)**: Use for complex domain logic, data transformation, and deep integration with the Python ecosystem.
+- **Event Service (Go)**: Use for high-throughput I/O, messaging producers/consumers, and low-latency critical paths.
 
-## Architecture & Conventions
+### 2. Infrastructure Hardening (Mandatory)
+- **Non-Root**: All new services must run as a non-privileged user (convention: `scalebreeze`) in Docker.
+- **Immutable Root**: Containers must be configured with `read_only: true` in `docker-compose.yml`, using `tmpfs` for ephemeral directories like `/tmp`.
+- **Resource Constraints**: Always define CPU and Memory limits in the `deploy` section of Compose.
 
-### Services
-- **Feed Service (FastAPI)**: Handles post creation and retrieval with cache-aside.
-- **Event Service (Go)**: High-performance producer that publishes post events to Kafka.
+### 3. Database Least Privilege
+- **No Superuser**: Applications must NOT connect using the `postgres` superuser.
+- **App User**: Use the `sb_app` role (configured via `init-db/`) for all runtime application queries.
 
-### Database & Connections
-- **Pool Management**: `asyncpg` connection pools are initialized in `main.py`'s `lifespan` context (min: 5, max: 50).
-- **Dependency Injection**: Database and Redis connections are injected into routes via FastAPI `Depends`.
-- **Statelessness**: Avoid global client instances; always use the provided dependencies.
-
-### Caching Strategy
-- **Pattern**: Cache-aside implementation for `GET /posts`.
-- **Headers**: Returns `X-Cache: HIT` or `X-Cache: MISS`.
-- **TTL**: 60 seconds for the posts list.
-- **Serialization**: Custom `json_serial` helper handles `UUID` and `datetime` types.
-
-## API Design Standards
+## 📡 API Design Standards (Contract First)
 
 ### Unified Error Format
-All services must return errors in the following JSON shape:
+All services must return errors in this JSON shape:
 ```json
 {
   "error": {
     "code": "MACHINE_READABLE_CODE",
-    "message": "Human readable message",
+    "message": "Human readable description",
     "details": {}
   }
 }
 ```
 
-### Pagination
-List endpoints (e.g., `GET /posts`) must support `limit` and `offset` query parameters:
-- `limit`: Default 20, Max 100.
-- `offset`: Default 0.
-
-### Input/Output Separation
-- **POST** requests should use specific creation models (e.g., `PostCreate`) and return the fully materialized object with server-generated fields (id, created_at).
+### Pagination & Resource Patterns
+- **List Endpoints**: Must support `limit` (max 100) and `offset` query parameters.
+- **Caching**: Segregate Redis cache keys by pagination parameters (e.g., `posts:limit:20:offset:0`).
 - **Status Codes**: 
-  - `201 Created` for successful resource creation.
-  - `202 Accepted` for asynchronous background tasks (like event publication).
+  - `201 Created` for resource persistence.
+  - `202 Accepted` for async background tasks (e.g., Kafka publication).
   - `422 Unprocessable Entity` for validation failures.
 
-### Observability & Logging
-- **Structured Logging**: Middleware logs every request in JSON format to stdout.
-- **Correlation IDs**: `X-Request-ID` is extracted from headers (or generated) and propagated in the response.
-- **Healthchecks**: Integrated Docker healthchecks for all services (DB, Redis, Kafka, API).
+## 💻 Coding Conventions
 
-## Testing Conventions
-- **Python**: Use `pytest` with `TestClient`. Patch `app.router.lifespan_context` to bypass infrastructure setup during unit-level integration tests.
-- **Go**: Use the standard `testing` package and `testify/assert`. Verify handlers using `httptest.NewRecorder`.
+### Python (FastAPI)
+- **Dependency Injection**: Use FastAPI `Depends` for all Database (`asyncpg`) and Redis connections. No global clients.
+- **Type Safety**: Mandatory type hints for all function signatures and Pydantic models.
+- **Lifespan**: Manage all connection pool lifecycles within the `asynccontextmanager` lifespan of the app.
 
-### Code Style
-- **Type Hints**: Mandatory for all function signatures and Pydantic models.
-- **Linting**: [Ruff](https://github.com/astral-sh/ruff) is configured via `.pre-commit-config.yaml`.
-- **Line Endings**: LF enforced for scripts and Dockerfiles; CRLF allowed for docs (configured in `.gitattributes`).
+### Go
+- **Interfaces for Testing**: External dependencies (like Kafka writers) must be abstracted into interfaces to enable mocking.
+- **Graceful Shutdown**: Implement signal handling (`SIGINT`, `SIGTERM`) to ensure all connections close cleanly without data loss.
+- **Stdlib Preference**: Favor the Go standard library (`net/http`) for API development.
 
-## Building and Running
+## 🧪 Testing Conventions
 
-### Prerequisites
-- Docker & Docker Compose
-- `uv` (recommended for local dev)
+### Isolation Strategy
+- **Python**: Patch `app.router.lifespan_context` during unit-level integration tests to bypass real infrastructure setup. Use `TestClient`.
+- **Go**: Use `httptest.NewRecorder` for handler validation and `testify/assert` for expressive checks.
 
-### Primary Commands
-- **Start Stack**: `docker compose up -d --build`
-- **Stop Stack**: `docker compose down`
-- **View Logs**: `docker compose logs -f api`
-- **Create Migration**: `uv run alembic revision -m "description"`
-- **Apply Migrations**: Handled automatically by `run_migrations.sh` inside the container.
-
-## Directory Structure
-- `migrations/`: Alembic migration scripts.
-- `nginx/`: Nginx configuration files.
-- `main.py`: Core FastAPI application and logic.
-- `Dockerfile.api`: Optimized build using `uv`.
-- `docker-compose.yml`: Infrastructure orchestration.
-- `pyproject.toml`: Dependency and tool configuration.
-- `run_migrations.sh`: Container entrypoint script.
-- `.pre-commit-config.yaml`: Quality control hooks.
+## 🛠 Operational Overview
+For build commands, port mappings, and local deployment instructions, refer to the **[README.md](./README.md)**.
