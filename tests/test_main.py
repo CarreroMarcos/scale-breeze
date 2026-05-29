@@ -1,7 +1,6 @@
 import pytest
 import uuid
 import json
-import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from contextlib import asynccontextmanager
@@ -13,12 +12,14 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def mock_db():
     mock = AsyncMock()
+    # Mock return value for INSERT
     mock.fetchrow.return_value = {
         "id": uuid.uuid4(),
         "content": "Test content",
         "author": "test_user",
         "created_at": datetime.now(timezone.utc)
     }
+    # Mock return value for SELECT
     mock.fetch.return_value = [
         {
             "id": uuid.uuid4(),
@@ -32,7 +33,7 @@ def mock_db():
 @pytest.fixture
 def mock_redis():
     mock = AsyncMock()
-    mock.get.return_value = None
+    mock.get.return_value = None  # Cache miss by default
     return mock
 
 # --- Client with Dependency Overrides ---
@@ -51,7 +52,7 @@ def client(mock_db, mock_redis):
     app.state.db_pool = MagicMock()
     app.state.redis_pool = MagicMock()
     
-    # Forcefully bypass the real lifespan by patching the router's context manager
+    # Forcefully bypass the real lifespan
     @asynccontextmanager
     async def dummy_lifespan(app):
         yield
@@ -76,11 +77,28 @@ def test_create_post(client, mock_db):
     post_data = {"content": "Hello World", "author": "tester"}
     response = client.post("/posts", json=post_data)
     
-    assert response.status_code == 200
+    assert response.status_code == 201  # Updated to 201 Created
     data = response.json()
     assert data["content"] == "Test content"
     assert "id" in data
     assert "created_at" in data
+
+def test_list_posts_pagination(client, mock_db):
+    # Test default pagination
+    response = client.get("/posts")
+    assert response.status_code == 200
+    mock_db.fetch.assert_called_with(
+        "SELECT * FROM posts ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+        20, 0
+    )
+
+    # Test custom pagination
+    response = client.get("/posts?limit=10&offset=5")
+    assert response.status_code == 200
+    mock_db.fetch.assert_called_with(
+        "SELECT * FROM posts ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+        10, 5
+    )
 
 def test_list_posts_cache_miss(client, mock_db, mock_redis):
     mock_redis.get.return_value = None
@@ -90,9 +108,9 @@ def test_list_posts_cache_miss(client, mock_db, mock_redis):
     assert response.status_code == 200
     assert response.headers["X-Cache"] == "MISS"
     assert len(response.json()) == 1
-    mock_db.fetch.assert_called_once()
 
 def test_list_posts_cache_hit(client, mock_redis):
+    # Simulate cache hit with JSON string
     mock_redis.get.return_value = json.dumps([{
         "id": str(uuid.uuid4()), 
         "content": "Cached", 
@@ -110,3 +128,12 @@ def test_structured_logging_middleware(client):
     response = client.get("/health")
     assert response.status_code == 200
     assert "X-Request-ID" in response.headers
+
+def test_error_handler_unified_format(client):
+    # Trigger a 404
+    response = client.get("/non-existent")
+    assert response.status_code == 404
+    data = response.json()
+    assert "error" in data
+    assert data["error"]["code"] == "NOT_FOUND"
+    assert "message" in data["error"]

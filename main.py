@@ -9,7 +9,8 @@ from contextlib import asynccontextmanager
 
 import asyncpg
 import redis.asyncio as redis
-from fastapi import FastAPI, Request, Depends, Response
+from fastapi import FastAPI, Request, Depends, Response, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 
@@ -31,6 +32,19 @@ def json_serial(obj):
     if isinstance(obj, (datetime, uuid.UUID)):
         return str(obj)
     raise TypeError(f"Type {type(obj)} not serializable")
+
+# --- Error Handling ---
+def create_error_response(code: str, message: str, status_code: int, details: dict = None):
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "error": {
+                "code": code,
+                "message": message,
+                "details": details or {}
+            }
+        }
+    )
 
 # --- Lifecycle Management ---
 @asynccontextmanager
@@ -66,6 +80,41 @@ async def get_redis(request: Request):
 # --- App Definition ---
 app = FastAPI(title="feed-service", lifespan=lifespan)
 
+from fastapi.exceptions import RequestValidationError
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return create_error_response(
+        code="API_ERROR",
+        message=exc.detail,
+        status_code=exc.status_code
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return create_error_response(
+        code="VALIDATION_ERROR",
+        message="Invalid request data.",
+        status_code=422,
+        details={"errors": exc.errors()}
+    )
+
+@app.exception_handler(status.HTTP_404_NOT_FOUND)
+async def not_found_exception_handler(request: Request, exc: HTTPException):
+    return create_error_response(
+        code="NOT_FOUND",
+        message="The requested resource was not found.",
+        status_code=404
+    )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    return create_error_response(
+        code="INTERNAL_SERVER_ERROR",
+        message="An unexpected error occurred.",
+        status_code=500
+    )
+
 # --- Middleware: Structured Logging ---
 @app.middleware("http")
 async def structured_logging_middleware(request: Request, call_next):
@@ -77,8 +126,7 @@ async def structured_logging_middleware(request: Request, call_next):
         status_code = response.status_code
     except Exception as e:
         status_code = 500
-        raise e
-    finally:
+        # Exception handler will catch this, but we log here
         duration_ms = (time.perf_counter() - start_time) * 1000
         log_line = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -87,9 +135,22 @@ async def structured_logging_middleware(request: Request, call_next):
             "path": request.url.path,
             "status_code": status_code,
             "duration_ms": round(duration_ms, 2),
-            "client_ip": request.client.host if request.client else None
+            "error": str(e)
         }
         print(json.dumps(log_line))
+        raise e
+    
+    duration_ms = (time.perf_counter() - start_time) * 1000
+    log_line = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "request_id": request_id,
+        "method": request.method,
+        "path": request.url.path,
+        "status_code": status_code,
+        "duration_ms": round(duration_ms, 2),
+        "client_ip": request.client.host if request.client else None
+    }
+    print(json.dumps(log_line))
 
     response.headers["X-Request-ID"] = request_id
     return response
@@ -104,7 +165,7 @@ class Post(PostCreate):
     created_at: datetime
 
 # --- Routes ---
-@app.post("/posts", response_model=Post)
+@app.post("/posts", response_model=Post, status_code=status.HTTP_201_CREATED)
 async def create_post(
     post: PostCreate, 
     db: asyncpg.Connection = Depends(get_db),
@@ -116,17 +177,19 @@ async def create_post(
         post_id, post.content, post.author
     )
     
-    # Cache individual post (Fixed serialization)
+    # Cache individual post
     await r.set(f"post:{post_id}", json.dumps(dict(row), default=json_serial), ex=3600)
     
     return dict(row)
 
 @app.get("/posts")
 async def list_posts(
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: asyncpg.Connection = Depends(get_db),
     r: redis.Redis = Depends(get_redis)
 ):
-    cache_key = "posts:all"
+    cache_key = f"posts:limit:{limit}:offset:{offset}"
     cached_data = await r.get(cache_key)
     
     if cached_data:
@@ -136,11 +199,13 @@ async def list_posts(
             headers={"X-Cache": "HIT"}
         )
 
-    rows = await db.fetch("SELECT * FROM posts ORDER BY created_at DESC LIMIT 100")
+    rows = await db.fetch(
+        "SELECT * FROM posts ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+        limit, offset
+    )
     posts = [dict(row) for row in rows]
-    
-    # Corrected serialization (UUID handles str() better than .isoformat())
     json_data = json.dumps(posts, default=json_serial)
+    
     await r.set(cache_key, json_data, ex=60)
     
     return Response(

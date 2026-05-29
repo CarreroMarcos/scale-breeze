@@ -21,6 +21,14 @@ type PostEvent struct {
 	Action string `json:"action"`
 }
 
+type APIError struct {
+	Error struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+		Details any    `json:"details"`
+	} `json:"error"`
+}
+
 // --- Configuration ---
 const (
 	kafkaBroker = "kafka:9092"
@@ -29,16 +37,22 @@ const (
 	port        = ":8081"
 )
 
-// --- Kafka Producer ---
-var writer *kafka.Writer
+// --- Kafka Interface ---
+type MessageWriter interface {
+	WriteMessages(ctx context.Context, msgs ...kafka.Message) error
+	Close() error
+}
 
-func connectWithRetry(ctx context.Context) (*kafka.Writer, error) {
+// --- Kafka Producer ---
+var writer MessageWriter
+
+func connectWithRetry(ctx context.Context) (MessageWriter, error) {
 	var lastErr error
 	backoff := 1 * time.Second
 
 	for i := 1; i <= 5; i++ {
 		log.Printf("Attempt %d: Connecting to Kafka at %s...", i, kafkaBroker)
-		
+
 		// Create a writer to test connection
 		w := &kafka.Writer{
 			Addr:                   kafka.TCP(kafkaBroker),
@@ -57,7 +71,7 @@ func connectWithRetry(ctx context.Context) (*kafka.Writer, error) {
 
 		lastErr = err
 		log.Printf("Connection failed: %v. Retrying in %v...", err, backoff)
-		
+
 		select {
 		case <-time.After(backoff):
 			backoff *= 2
@@ -92,22 +106,39 @@ func startConsumer(ctx context.Context) {
 	}
 }
 
+// --- Error Helper ---
+func sendError(w http.ResponseWriter, code string, message string, statusCode int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	errResp := APIError{}
+	errResp.Error.Code = code
+	errResp.Error.Message = message
+	errResp.Error.Details = map[string]string{}
+	json.NewEncoder(w).Encode(errResp)
+}
+
 // --- Handlers ---
 func handleEvents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		sendError(w, "METHOD_NOT_ALLOWED", "Only POST is allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
 	var event PostEvent
 	if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		sendError(w, "BAD_REQUEST", "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	// Basic validation
+	if event.PostID == "" || event.Author == "" || event.Action == "" {
+		sendError(w, "VALIDATION_ERROR", "Missing required fields: post_id, author, action", http.StatusUnprocessableEntity)
 		return
 	}
 
 	payload, err := json.Marshal(event)
 	if err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		sendError(w, "INTERNAL_ERROR", "Failed to marshal event", http.StatusInternalServerError)
 		return
 	}
 
@@ -118,19 +149,24 @@ func handleEvents(w http.ResponseWriter, r *http.Request) {
 	err = writer.WriteMessages(r.Context(), msg)
 	if err != nil {
 		log.Printf("Failed to publish message: %v", err)
-		http.Error(w, "Failed to publish event", http.StatusInternalServerError)
+		sendError(w, "KAFKA_ERROR", "Failed to publish event to message queue", http.StatusServiceUnavailable)
 		return
 	}
 
 	log.Printf("Published event: %s | Action: %s", event.PostID, event.Action)
-	
+
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
-	json.NewEncoder(w).Encode(map[string]string{"status": "event_published"})
+	json.NewEncoder(w).Encode(map[string]any{
+		"status": "event_published",
+		"data":   event,
+	})
 }
 
 func main() {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// Create context that listens for interrupt signals
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	// Connect to Kafka
 	var err error
@@ -138,24 +174,20 @@ func main() {
 	if err != nil {
 		log.Fatalf("Critical error: %v", err)
 	}
-	defer writer.Close()
+	defer func() {
+		if err := writer.Close(); err != nil {
+			log.Printf("Error closing Kafka writer: %v", err)
+		}
+	}()
 
 	// Start Background Consumer
 	go startConsumer(ctx)
 
-	// HTTP Routes
-	http.HandleFunc("/events", handleEvents)
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	// HTTP Server Configuration
+	mux := http.NewServeMux()
+	mux.HandleFunc("/events", handleEvents)
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
-	})
-
-	log.Printf("Event service starting on %s", port)
-	if err := http.ListenAndServe(port, nil); err != nil {
-		log.Fatalf("Server failed: %v", err)
-	}
-}
-StatusOK)
 		w.Write([]byte("OK"))
 	})
 

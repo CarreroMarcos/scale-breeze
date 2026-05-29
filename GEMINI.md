@@ -32,6 +32,32 @@ ScaleBreeze Feed Service is a high-performance, asynchronous FastAPI application
 - **TTL**: 60 seconds for the posts list.
 - **Serialization**: Custom `json_serial` helper handles `UUID` and `datetime` types.
 
+## API Design Standards
+
+### Unified Error Format
+All services must return errors in the following JSON shape:
+```json
+{
+  "error": {
+    "code": "MACHINE_READABLE_CODE",
+    "message": "Human readable message",
+    "details": {}
+  }
+}
+```
+
+### Pagination
+List endpoints (e.g., `GET /posts`) must support `limit` and `offset` query parameters:
+- `limit`: Default 20, Max 100.
+- `offset`: Default 0.
+
+### Input/Output Separation
+- **POST** requests should use specific creation models (e.g., `PostCreate`) and return the fully materialized object with server-generated fields (id, created_at).
+- **Status Codes**: 
+  - `201 Created` for successful resource creation.
+  - `202 Accepted` for asynchronous background tasks (like event publication).
+  - `422 Unprocessable Entity` for validation failures.
+
 ### Observability & Logging
 - **Structured Logging**: Middleware logs every request in JSON format to stdout.
 - **Correlation IDs**: `X-Request-ID` is extracted from headers (or generated) and propagated in the response.
