@@ -30,6 +30,7 @@ A high-performance, production-ready FastAPI template designed for local develop
 docker compose up -d --build
 ```
 - **API**: `http://localhost:8888`
+- **Events**: `http://localhost:8888/events` (POST)
 - **Postgres**: `localhost:5432`
 - **Kafka**: `localhost:9092` (internal) / `localhost:9094` (external)
 
@@ -64,3 +65,4 @@ To move from "Production-Quality" to "Enterprise-Grade," consider these next ste
    - Add a `.pre-commit-config.yaml` with `ruff` and `mypy` for static analysis and formatting.
 6. **Testing**:
    - Implement Integration tests using `pytest-asyncio` and `TestClient`.
+ntegration tests using `pytest-asyncio` and `TestClient`.

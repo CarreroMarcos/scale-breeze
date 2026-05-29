@@ -6,8 +6,8 @@ This document serves as the primary instructional context for Gemini CLI when wo
 ScaleBreeze Feed Service is a high-performance, asynchronous FastAPI application designed as a production-ready template. It features a modern tech stack focused on performance, scalability, and observability.
 
 ### Core Tech Stack
-- **Framework**: [FastAPI](https://fastapi.tiangolo.com/) (Python 3.11+)
-- **Package Management**: [uv](https://github.com/astral-sh/uv)
+- **Frameworks**: [FastAPI](https://fastapi.tiangolo.com/) (Python 3.11+), Go 1.23+
+- **Package Management**: [uv](https://github.com/astral-sh/uv), Go Modules
 - **Database**: PostgreSQL 16 (via `asyncpg` for raw performance)
 - **Caching**: Redis 7 (via `redis-py`)
 - **Messaging**: Apache Kafka 3.7.0 (KRaft mode, no Zookeeper)
@@ -16,6 +16,10 @@ ScaleBreeze Feed Service is a high-performance, asynchronous FastAPI application
 - **Containerization**: Docker & Docker Compose
 
 ## Architecture & Conventions
+
+### Services
+- **Feed Service (FastAPI)**: Handles post creation and retrieval with cache-aside.
+- **Event Service (Go)**: High-performance producer that publishes post events to Kafka.
 
 ### Database & Connections
 - **Pool Management**: `asyncpg` connection pools are initialized in `main.py`'s `lifespan` context (min: 5, max: 50).

@@ -83,6 +83,23 @@ services:
     networks:
       - scalebreeze-net
 
+  events:
+    build:
+      context: ./event-service
+      dockerfile: Dockerfile
+    container_name: scalebreeze-events
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - scalebreeze-net
+
   nginx:
     image: nginx:alpine
     container_name: scalebreeze-nginx
