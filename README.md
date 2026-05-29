@@ -52,10 +52,35 @@ docker compose up -d --build
 - **Python Suite**: `export PYTHONPATH=. && uv run pytest tests/test_main.py`
 - **Go Suite**: `cd event-service && go test -v .`
 - **Load Testing**: `uv run locust -f tests/load/locustfile.py --host https://localhost:8889`
-- **Migrations**: `uv run alembic revision -m "your description"`
+- **Migrations**: `uv run alembic revision -m "description"`
 
 ---
 
-## 📖 Extended Documentation
+## 📈 How to Stress Test
+
+ScaleBreeze includes a controlled stress-testing workflow to evaluate system stability and resource consumption under load.
+
+### Running the Test
+Execute the automated ramp-up script:
+```bash
+chmod +x tests/load/run_load_test.sh
+./tests/load/run_load_test.sh
+```
+This script will:
+1.  **Ramp up** from 1 to 100 concurrent users (2 users every 10 seconds).
+2.  **Simulate traffic**: 80% feed reads, 20% post creations.
+3.  **Monitor hardware**: Capture CPU and Memory usage for all Docker containers into `container_metrics.csv`.
+
+### Interpreting Results
+1.  **Response Time (Latency)**: Look for the `95th percentile` (p95) in the Locust summary. In a healthy local env, this should remain under 200ms.
+2.  **Error Rate**: Any non-zero error rate suggests the rate limit (100r/m) or resource limits are being exceeded.
+3.  **Container Metrics**: Open `container_metrics.csv` to identify bottlenecks.
+    *   **CPU %**: If the `scalebreeze-api` or `scalebreeze-events` hit 50%+ consistently, consider increasing the `deploy.resources.limits` in `docker-compose.yml`.
+    *   **Mem Usage**: Check for memory leaks or spikes, especially in the Redis and Python containers.
+
+---
+
+## 🛡 Security & Hardening
+
 - **[GEMINI.md](./GEMINI.md)**: Detailed coding standards, architectural contracts, and AI-agent instructions.
 - **`init-db/`**: Scripts for secure database and user initialization.
