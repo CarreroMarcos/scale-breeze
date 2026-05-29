@@ -17,7 +17,13 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 COPY . .
 
+# Create a non-root user and change ownership
+RUN groupadd -r scalebreeze && useradd -r -g scalebreeze scalebreeze && \
+    chown -R scalebreeze:scalebreeze /app
+
 # Ensure the script is executable
 RUN chmod +x run_migrations.sh
+
+USER scalebreeze
 
 CMD ["./run_migrations.sh"]

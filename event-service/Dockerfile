@@ -12,9 +12,13 @@ COPY . .
 RUN go build -o event-service .
 
 FROM alpine:latest
-RUN apk add --no-cache curl
+RUN apk add --no-cache curl ca-certificates && \
+    addgroup -S scalebreeze && adduser -S scalebreeze -G scalebreeze
+
 WORKDIR /root/
 COPY --from=builder /app/event-service .
+
+USER scalebreeze
 
 EXPOSE 8081
 

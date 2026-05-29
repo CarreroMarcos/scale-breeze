@@ -77,8 +77,19 @@ async def get_redis(request: Request):
     finally:
         await client.close()
 
+from fastapi.middleware.cors import CORSMiddleware
+
 # --- App Definition ---
 app = FastAPI(title="feed-service", lifespan=lifespan)
+
+# --- Security: CORS ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://localhost:8889"], # Strict origin control
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+    expose_headers=["X-Cache", "X-Request-ID"],
+)
 
 from fastapi.exceptions import RequestValidationError
 

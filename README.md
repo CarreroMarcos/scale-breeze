@@ -56,10 +56,12 @@ go test -v .
 ---
 
 ## 🛡 Security & Best Practices (Implemented)
-- **Non-Global Clients**: Database and Redis clients are managed via FastAPI's `lifespan` and injected via dependencies to prevent connection leaks.
-- **Healthchecks**: Every service (DB, Redis, Kafka, API) has a Docker healthcheck defined.
-- **Graceful Shutdown**: Lifecycle hooks ensure connection pools are closed cleanly.
-- **Type Safety**: Pydantic models enforce strict schema validation for all inputs/outputs.
+- **Non-Privileged Users**: All service containers (API, Events) run as non-root users (`scalebreeze`) for defense-in-depth isolation.
+- **SSL/TLS & HSTS**: Enforced HTTPS with a 1-year HSTS policy and modern cipher suites.
+- **Security Headers**: Nginx is configured with strict Content-Security-Policy (CSP), X-Frame-Options (DENY), and X-Content-Type-Options (nosniff).
+- **CORS Policies**: Explicit cross-origin resource sharing allowed only for the gateway origin.
+- **Rate Limiting**: IP-based throttling (100r/m) with burst handling.
+- **Graceful Shutdown**: All services handle termination signals to prevent data loss.
 
 ---
 
