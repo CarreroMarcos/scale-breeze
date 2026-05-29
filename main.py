@@ -9,8 +9,11 @@ from contextlib import asynccontextmanager
 
 import asyncpg
 import redis.asyncio as redis
+import aiokafka
 from fastapi import FastAPI, Request, Depends, Response, HTTPException, Query, status
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 
@@ -58,12 +61,19 @@ async def lifespan(app: FastAPI):
     
     # Startup: Initialize Redis pool
     app.state.redis_pool = redis.ConnectionPool.from_url(settings.REDIS_URL)
+
+    # Startup: Initialize Kafka producer
+    app.state.kafka_producer = aiokafka.AIOKafkaProducer(
+        bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS
+    )
+    await app.state.kafka_producer.start()
     
     yield
     
-    # Shutdown: Close pools
+    # Shutdown: Close pools and producer
     await app.state.db_pool.close()
     await app.state.redis_pool.disconnect()
+    await app.state.kafka_producer.stop()
 
 # --- Dependencies ---
 async def get_db(request: Request):
@@ -77,7 +87,8 @@ async def get_redis(request: Request):
     finally:
         await client.close()
 
-from fastapi.middleware.cors import CORSMiddleware
+async def get_kafka_producer(request: Request):
+    return request.app.state.kafka_producer
 
 # --- App Definition ---
 app = FastAPI(title="feed-service", lifespan=lifespan)
@@ -90,8 +101,6 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-Cache", "X-Request-ID"],
 )
-
-from fastapi.exceptions import RequestValidationError
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
@@ -137,7 +146,6 @@ async def structured_logging_middleware(request: Request, call_next):
         status_code = response.status_code
     except Exception as e:
         status_code = 500
-        # Exception handler will catch this, but we log here
         duration_ms = (time.perf_counter() - start_time) * 1000
         log_line = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -176,22 +184,33 @@ class Post(PostCreate):
     created_at: datetime
 
 # --- Routes ---
-@app.post("/posts", response_model=Post, status_code=status.HTTP_201_CREATED)
+@app.post("/posts", status_code=status.HTTP_202_ACCEPTED)
 async def create_post(
     post: PostCreate, 
     db: asyncpg.Connection = Depends(get_db),
-    r: redis.Redis = Depends(get_redis)
+    r: redis.Redis = Depends(get_redis),
+    producer: aiokafka.AIOKafkaProducer = Depends(get_kafka_producer)
 ):
     post_id = uuid.uuid4()
+    # 1. Persist to DB
     row = await db.fetchrow(
         "INSERT INTO posts (id, content, author) VALUES ($1, $2, $3) RETURNING id, content, author, created_at",
         post_id, post.content, post.author
     )
     
-    # Cache individual post
+    # 2. Emit Event to Kafka (Fan-out)
+    event = {
+        "post_id": str(post_id),
+        "author": post.author,
+        "action": "created",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+    await producer.send_and_wait("post-events", json.dumps(event).encode("utf-8"))
+    
+    # 3. Individual cache
     await r.set(f"post:{post_id}", json.dumps(dict(row), default=json_serial), ex=3600)
     
-    return dict(row)
+    return {"status": "accepted", "id": post_id}
 
 @app.get("/posts")
 async def list_posts(

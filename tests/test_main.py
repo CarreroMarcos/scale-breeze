@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch, ANY
 from contextlib import asynccontextmanager
 
-from main import app, get_db, get_redis
+from main import app, get_db, get_redis, get_kafka_producer
 from fastapi.testclient import TestClient
 
 # --- Mocks ---
@@ -36,21 +36,31 @@ def mock_redis():
     mock.get.return_value = None  # Cache miss by default
     return mock
 
+@pytest.fixture
+def mock_kafka():
+    mock = AsyncMock()
+    return mock
+
 # --- Client with Dependency Overrides ---
 @pytest.fixture
-def client(mock_db, mock_redis):
+def client(mock_db, mock_redis, mock_kafka):
     def override_get_db():
         yield mock_db
 
     def override_get_redis():
         yield mock_redis
 
+    def override_get_kafka():
+        return mock_kafka
+
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_redis] = override_get_redis
+    app.dependency_overrides[get_kafka_producer] = override_get_kafka
     
     # Mock the pools on app.state
     app.state.db_pool = MagicMock()
     app.state.redis_pool = MagicMock()
+    app.state.kafka_producer = mock_kafka
     
     # Forcefully bypass the real lifespan
     @asynccontextmanager
@@ -73,15 +83,22 @@ def test_health_check(client):
     assert response.status_code == 200
     assert response.json() == {"status": "healthy"}
 
-def test_create_post(client, mock_db):
+def test_create_post(client, mock_db, mock_kafka):
     post_data = {"content": "Hello World", "author": "tester"}
     response = client.post("/posts", json=post_data)
     
-    assert response.status_code == 201  # Updated to 201 Created
+    assert response.status_code == 202  # Updated to 202 Accepted
     data = response.json()
-    assert data["content"] == "Test content"
+    assert data["status"] == "accepted"
     assert "id" in data
-    assert "created_at" in data
+    
+    # Verify Kafka event emitted
+    mock_kafka.send_and_wait.assert_called_once()
+    args, kwargs = mock_kafka.send_and_wait.call_args
+    assert args[0] == "post-events"
+    event_data = json.loads(args[1].decode("utf-8"))
+    assert event_data["author"] == "tester"
+    assert event_data["action"] == "created"
 
 def test_list_posts_pagination(client, mock_db):
     # Test default pagination

@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
 	"github.com/segmentio/kafka-go"
 	"github.com/stretchr/testify/assert"
 )
@@ -137,4 +139,29 @@ func TestHandleEventsSuccess(t *testing.T) {
 	json.NewDecoder(rr.Body).Decode(&resp)
 	assert.Equal(t, "event_published", resp["status"])
 	assert.NotNil(t, resp["data"])
+}
+
+func TestFanOutPost(t *testing.T) {
+	// Setup miniredis
+	s := miniredis.RunT(t)
+	rdb = redis.NewClient(&redis.Options{
+		Addr: s.Addr(),
+	})
+
+	event := PostEvent{
+		PostID: "post-789",
+		Author: "celebrity",
+		Action: "created",
+	}
+
+	fanOutPost(context.Background(), event)
+
+	// Verify that the post ID was pushed to followers' feeds
+	followers := []string{"follower-1", "follower-2", "follower-3"}
+	for _, f := range followers {
+		key := "user:" + f + ":feed"
+		val, err := rdb.LPop(context.Background(), key).Result()
+		assert.NoError(t, err)
+		assert.Equal(t, "post-789", val)
+	}
 }
