@@ -17,7 +17,7 @@ This document serves as the primary instructional context for Gemini CLI and oth
 - **No Superuser**: Applications must NOT connect using the `postgres` superuser.
 - **App User**: Use the `sb_app` role (configured via `init-db/`) for all runtime application queries.
 
-## API Design Standards (Contract First)
+## 📡 API Design Standards (Contract First)
 
 ### Context Tracing
 - **Request ID**: Nginx generates a unique `X-Request-ID` for every incoming request.
@@ -30,7 +30,6 @@ This document serves as the primary instructional context for Gemini CLI and oth
 - **Payload**: Tokens must contain a `sub` claim representing the `user_id`.
 
 ### Unified Error Format
-
 All services must return errors in this JSON shape:
 ```json
 {
@@ -72,6 +71,12 @@ All services must return errors in this JSON shape:
 - **Framework**: [Locust](https://locust.io/) for Python-based distributed load generation.
 - **Traffic Shape**: Maintain a 4:1 ratio of reads (`GET /feed`) to writes (`POST /posts`) to simulate realistic usage patterns.
 - **Authentication**: Virtual users must generate valid JWTs in `on_start` to pass gateway security boundaries.
+
+## 🚀 Scaling Roadmap (Technical Constraints)
+
+1. **Thundering Herd**: High-volume accounts must migrate to **Cache-Ahead** (background background workers refreshing the cache) to prevent DB spikes on TTL expiry.
+2. **Tiered Limits**: Implement dynamic rate limits based on auth posture (Anonymous: 100r/m, Authenticated: 1000r/m).
+3. **Serialization**: Prefer `orjson` over the standard library for high-throughput Python JSON processing.
 
 ## 🛠 Operational Overview
 For build commands, port mappings, and local deployment instructions, refer to the **[README.md](./README.md)**.

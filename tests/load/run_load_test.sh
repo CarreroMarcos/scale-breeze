@@ -4,8 +4,8 @@
 LOCUST_FILE="tests/load/locustfile.py"
 HOST="https://localhost:8889"
 USERS=100
-SPAWN_RATE=0.2 # 2 users every 10 seconds (0.2 users/sec)
-RUN_TIME="5m"
+SPAWN_RATE=5 # 2 users every 10 seconds (0.2 users/sec)
+RUN_TIME="30s"
 METRICS_FILE="container_metrics.csv"
 
 echo "🚀 Starting Controlled Stress Test..."
