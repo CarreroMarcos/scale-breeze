@@ -1,0 +1,79 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# --- Virtual Environments ---
+.venv/
+venv/
+ENV/
+env/
+pythonenv*
+
+# --- Environment Secrets ---
+.env
+.env.*
+!.env.example
+.venv/
+*.secret
+
+# --- IDEs & Editors ---
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# --- OS Specific ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# --- Docker ---
+.docker/
+# Exclude data volumes if they were mapped locally (though we use named volumes)
+postgres_data/
+redis_data/
+kafka_data/
+
+# --- Database/Logs ---
+*.log
+*.sql
+*.sqlite
+*.db
+
+# --- Alembic ---
+# We keep migrations/, but ignore temp files if any
+# migrations/versions/*.py (DO NOT IGNORE - these are source)
+
+# --- uv ---
+# uv.lock is usually COMMITTED to ensure reproducible builds.
+# If you prefer not to, uncomment the line below.
+# uv.lock

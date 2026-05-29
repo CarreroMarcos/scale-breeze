@@ -1,0 +1,12 @@
+# Default behavior to automatically normalize line endings
+* text=auto
+
+# Enforce LF for Docker/Unix-sensitive files
+*.sh text eol=lf
+Dockerfile* text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Enforce CRLF for Windows-native documentation/text files
+*.md text eol=crlf
+*.txt text eol=crlf
