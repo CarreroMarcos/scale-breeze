@@ -69,6 +69,7 @@ kafka_data/
 *.sql
 *.sqlite
 *.db
+container_metrics.csv
 
 # --- Alembic ---
 # We keep migrations/, but ignore temp files if any
