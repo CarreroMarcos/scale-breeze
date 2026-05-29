@@ -31,14 +31,18 @@ class ScaleBreezeUser(HttpUser):
     @task(4)  # 80% weight
     def get_feed(self):
         """Simulates a user reading their timeline."""
-        # Using the current user's ID for their personal feed
         with self.client.get(
             f"/user/{self.user_id}/feed",
             headers=self.headers,
             name="/user/{id}/feed",
-            verify=False  # Disable SSL verification for self-signed local certs
+            verify=False,
+            catch_response=True
         ) as response:
-            if response.status_code != 200:
+            if response.status_code == 200:
+                response.success()
+            elif response.status_code == 429:
+                response.failure("Rate limited (429)")
+            else:
                 response.failure(f"Failed to fetch feed: {response.status_code}")
 
     @task(1)  # 20% weight
@@ -53,10 +57,14 @@ class ScaleBreezeUser(HttpUser):
             json=payload,
             headers=self.headers,
             name="/posts",
-            verify=False
+            verify=False,
+            catch_response=True
         ) as response:
-            # POST /posts returns 202 Accepted in our current implementation
-            if response.status_code not in [201, 202]:
+            if response.status_code in [201, 202]:
+                response.success()
+            elif response.status_code == 429:
+                response.failure("Rate limited (429)")
+            else:
                 response.failure(f"Failed to create post: {response.status_code}")
 
 @events.init_command_line_parser.add_listener
