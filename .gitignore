@@ -58,6 +58,7 @@ Thumbs.db
 
 # --- Docker ---
 .docker/
+nginx/certs/
 # Exclude data volumes if they were mapped locally (though we use named volumes)
 postgres_data/
 redis_data/
