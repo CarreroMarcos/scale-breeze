@@ -1,23 +1,37 @@
-# ScaleBreeze
+# ScaleBreeze: A Distributed High-Performance Service Template
 
-A production-grade, multi-service architecture for high-performance feed management and event streaming. Built for local development on Ubuntu/Linux with a focus on security, observability, and scalability.
+ScaleBreeze is a multi-service engineering showcase demonstrating how to architect, secure, and scale modern web applications. It serves as a robust foundation for building high-concurrency systems using distributed messaging, advanced caching, and a security-first infrastructure.
 
-## 🚀 System Architecture
+## 🏗 Key Engineering Highlights
 
-### 1. Feed Service (Python/FastAPI)
-- **High-Performance Async**: Powered by `FastAPI` and `asyncpg` with a custom connection pool (min: 5, max: 50).
-- **Cache-Aside Pattern**: Integrated with **Redis 7** for optimized data retrieval with `X-Cache` HIT/MISS tracking.
-- **Automated Migrations**: Schema evolution managed by **Alembic** (Async template).
+### **Distributed Systems & Event-Driven Architecture**
+- **High-Throughput I/O**: Developed a Go-based event service that manages both publishing and consuming messages via **Apache Kafka** (KRaft mode).
+- **Resilient Messaging**: Implemented exponential backoff connection strategies and graceful shutdown handlers to ensure zero data loss during service lifecycles.
+- **Asynchronous Processing**: Leveraged **FastAPI** and **asyncpg** for non-blocking database interactions, supporting high-concurrency feed management.
 
-### 2. Event Service (Go)
-- **Bidirectional Messaging**: High-performance event producer and consumer using `net/http` and `segmentio/kafka-go`.
-- **Resilient Delivery**: Implements `connectWithRetry` with exponential backoff and **graceful shutdown** to prevent data loss.
-- **Kafka integration**: Communicates via the `post-events` topic in a KRaft-mode cluster.
+### **Performance Optimization**
+- **Efficient Caching**: Implemented a **Cache-Aside pattern** using **Redis 7**, reducing database load through intelligent pagination-aware caching with `X-Cache` hit/miss visibility.
+- **Connection Stewardship**: Tuned PostgreSQL performance with custom-sized connection pools (min: 5, max: 50) tailored for variable load.
+- **Optimized Toolchain**: Utilized **uv** for ultra-fast, reproducible Python builds and **Go modules** for efficient dependency management.
 
-### 3. API Gateway (Nginx)
-- **Security First**: Enforced SSL/TLS (HTTPS) with automated 301 redirection from HTTP.
-- **Traffic Control**: IP-based **Rate Limiting** (100r/m) with burst protection.
-- **Observability**: JSON-formatted analytics logs and custom JSON error responses (429, 502, 504).
+### **Security-First Engineering**
+- **Infrastructure Hardening**: Architected Docker environments with **read-only root filesystems** and **non-privileged service users** to minimize the potential attack surface.
+- **Least-Privilege Data Access**: Isolated application data by migrating from superuser access to a restricted database role (`sb_app`) with granular permissions.
+- **Secure Transport**: Enforced **TLS 1.3** and high-grade cipher suites, protected by a 1-year **HSTS** policy and strict security headers (CSP, XFO, nosniff).
+
+### **Observability & Operational Integrity**
+- **Analytics-Ready Logging**: Unified logs into structured JSON formats, including request timing, client data, and **Correlation IDs** (`X-Request-ID`) for distributed tracing.
+- **Robust Health Monitoring**: Integrated Docker healthchecks across the entire stack (Postgres, Redis, Kafka, API) to ensure automated recovery and reliability.
+- **Automated Evolutions**: Managed database schema versioning with **Alembic**, integrated directly into the container orchestration flow.
+
+---
+
+## 🚀 Core Technologies
+
+- **Backends**: Python 3.11+ (FastAPI), Go 1.23+
+- **Data & Messaging**: PostgreSQL 16, Redis 7, Apache Kafka 3.7.0
+- **Gateway & Security**: Nginx, OpenSSL (Self-signed TLS)
+- **DevOps**: Docker & Compose, uv, Alembic, Ruff
 
 ---
 
@@ -25,38 +39,20 @@ A production-grade, multi-service architecture for high-performance feed managem
 
 ### Prerequisites
 - Docker & Docker Compose
-- [uv](https://github.com/astral-sh/uv) (recommended for local Python dev)
-- Go 1.23+ (optional for local Go dev)
+- [uv](https://github.com/astral-sh/uv) (for local development)
 
-### Launching the Stack
+### Launching the Environment
 ```bash
 docker compose up -d --build
 ```
-- **Gateway (HTTPS)**: `https://localhost:8889`
-- **Gateway (HTTP Redirect)**: `http://localhost:8888`
-- **PostgreSQL**: `localhost:5432` (User: `sb_app`)
-- **Redis**: `localhost:6379`
-- **Kafka**: `localhost:9094` (External Broker)
 
-### Core Workflows
-| Task | Command |
-| :--- | :--- |
-| **Python Tests** | `export PYTHONPATH=. && uv run pytest tests/test_main.py` |
-| **Go Tests** | `cd event-service && go test -v .` |
-| **Create Migration** | `uv run alembic revision -m "description"` |
-| **View API Logs** | `docker compose logs -f api` |
+### Verification & Testing
+- **Python Suite**: `export PYTHONPATH=. && uv run pytest tests/test_main.py`
+- **Go Suite**: `cd event-service && go test -v .`
+- **Migrations**: `uv run alembic revision -m "your description"`
 
 ---
 
-## 🛡 Security & Hardening
-ScaleBreeze adheres to strict production security standards:
-- **Defense in Depth**: All service containers run as **non-privileged users** (`scalebreeze`) with **read-only root filesystems**.
-- **Least Privilege**: Applications connect to PostgreSQL using a restricted `sb_app` user instead of the superuser.
-- **Resource Insulation**: Strict CPU and Memory limits are applied to every container to mitigate local DoS.
-- **Transport Security**: TLS 1.3 enforced with a 1-year HSTS policy and restrictive Content-Security-Policy (CSP).
-
----
-
-## 📖 Documentation
-- For internal architectural rules, coding standards, and AI-agent instructions, see **[GEMINI.md](./GEMINI.md)**.
-- For database schema initialization logic, see **`init-db/`**.
+## 📖 Extended Documentation
+- **[GEMINI.md](./GEMINI.md)**: Detailed coding standards, architectural contracts, and AI-agent instructions.
+- **`init-db/`**: Scripts for secure database and user initialization.
