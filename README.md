@@ -40,6 +40,19 @@ Migrations run automatically on container startup. To create a new one:
 uv run alembic revision -m "your description"
 ```
 
+### Running Tests
+#### Python (Feed Service)
+```bash
+export PYTHONPATH=.
+uv run pytest tests/test_main.py
+```
+
+#### Go (Event Service)
+```bash
+cd event-service
+go test -v .
+```
+
 ---
 
 ## 🛡 Security & Best Practices (Implemented)

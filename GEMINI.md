@@ -37,6 +37,10 @@ ScaleBreeze Feed Service is a high-performance, asynchronous FastAPI application
 - **Correlation IDs**: `X-Request-ID` is extracted from headers (or generated) and propagated in the response.
 - **Healthchecks**: Integrated Docker healthchecks for all services (DB, Redis, Kafka, API).
 
+## Testing Conventions
+- **Python**: Use `pytest` with `TestClient`. Patch `app.router.lifespan_context` to bypass infrastructure setup during unit-level integration tests.
+- **Go**: Use the standard `testing` package and `testify/assert`. Verify handlers using `httptest.NewRecorder`.
+
 ### Code Style
 - **Type Hints**: Mandatory for all function signatures and Pydantic models.
 - **Linting**: [Ruff](https://github.com/astral-sh/ruff) is configured via `.pre-commit-config.yaml`.
