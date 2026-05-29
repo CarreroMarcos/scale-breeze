@@ -2,7 +2,7 @@ import pytest
 import uuid
 import json
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch, ANY
 from contextlib import asynccontextmanager
 
 from main import app, get_db, get_redis
@@ -123,6 +123,33 @@ def test_list_posts_cache_hit(client, mock_redis):
     assert response.status_code == 200
     assert response.headers["X-Cache"] == "HIT"
     assert response.json()[0]["content"] == "Cached"
+
+def test_get_user_feed_cache_miss(client, mock_db, mock_redis):
+    mock_redis.get.return_value = None
+    user_id = uuid.uuid4()
+    
+    response = client.get(f"/user/{user_id}/feed")
+    
+    assert response.status_code == 200
+    assert response.headers["X-Cache"] == "MISS"
+    assert len(response.json()) == 1
+    mock_db.fetch.assert_called()
+    mock_redis.set.assert_called_with(f"user:{user_id}:feed", ANY, ex=60)
+
+def test_get_user_feed_cache_hit(client, mock_redis):
+    user_id = uuid.uuid4()
+    mock_redis.get.return_value = json.dumps([{
+        "id": str(uuid.uuid4()), 
+        "content": "Feed Cache", 
+        "author": "system",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }])
+    
+    response = client.get(f"/user/{user_id}/feed")
+    
+    assert response.status_code == 200
+    assert response.headers["X-Cache"] == "HIT"
+    assert response.json()[0]["content"] == "Feed Cache"
 
 def test_structured_logging_middleware(client):
     response = client.get("/health")

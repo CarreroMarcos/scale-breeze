@@ -225,6 +225,38 @@ async def list_posts(
         headers={"X-Cache": "MISS"}
     )
 
+@app.get("/user/{user_id}/feed")
+async def get_user_feed(
+    user_id: uuid.UUID,
+    db: asyncpg.Connection = Depends(get_db),
+    r: redis.Redis = Depends(get_redis)
+):
+    cache_key = f"user:{user_id}:feed"
+    cached_data = await r.get(cache_key)
+    
+    if cached_data:
+        return Response(
+            content=cached_data,
+            media_type="application/json",
+            headers={"X-Cache": "HIT"}
+        )
+
+    # Architectural Demo: Feed is the latest 50 posts
+    rows = await db.fetch(
+        "SELECT * FROM posts ORDER BY created_at DESC LIMIT 50"
+    )
+    posts = [dict(row) for row in rows]
+    json_data = json.dumps(posts, default=json_serial)
+    
+    # Set cache with 60s TTL
+    await r.set(cache_key, json_data, ex=60)
+    
+    return Response(
+        content=json_data,
+        media_type="application/json",
+        headers={"X-Cache": "MISS"}
+    )
+
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
