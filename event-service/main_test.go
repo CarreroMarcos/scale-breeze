@@ -7,12 +7,25 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/redis/go-redis/v9"
 	"github.com/segmentio/kafka-go"
 	"github.com/stretchr/testify/assert"
 )
+
+// --- Helpers ---
+func createTestToken(userID string) string {
+	claims := jwt.MapClaims{
+		"sub": userID,
+		"exp": time.Now().Add(time.Hour).Unix(),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, _ := token.SignedString([]byte(cfg.JWTSecret))
+	return tokenString
+}
 
 func TestHealthHandler(t *testing.T) {
 	req, err := http.NewRequest("GET", "/health", nil)
@@ -48,7 +61,10 @@ func TestPostEventModel(t *testing.T) {
 }
 
 func TestHandleEventsMethodNotAllowed(t *testing.T) {
+	cfg = Config{JWTSecret: "test-secret"}
+	token := createTestToken("test-user")
 	req, err := http.NewRequest("GET", "/events", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
 	assert.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -65,8 +81,11 @@ func TestHandleEventsMethodNotAllowed(t *testing.T) {
 }
 
 func TestHandleEventsInvalidJSON(t *testing.T) {
+	cfg = Config{JWTSecret: "test-secret"}
+	token := createTestToken("test-user")
 	body := bytes.NewBufferString(`{"post_id": "missing-bracket"`)
 	req, err := http.NewRequest("POST", "/events", body)
+	req.Header.Set("Authorization", "Bearer "+token)
 	assert.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -83,8 +102,11 @@ func TestHandleEventsInvalidJSON(t *testing.T) {
 }
 
 func TestHandleEventsValidationFailure(t *testing.T) {
+	cfg = Config{JWTSecret: "test-secret"}
+	token := createTestToken("test-user")
 	body := bytes.NewBufferString(`{"post_id": "missing-fields"}`)
 	req, err := http.NewRequest("POST", "/events", body)
+	req.Header.Set("Authorization", "Bearer "+token)
 	assert.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -114,6 +136,9 @@ func (m *mockWriter) Close() error {
 }
 
 func TestHandleEventsSuccess(t *testing.T) {
+	cfg = Config{JWTSecret: "test-secret"}
+	token := createTestToken("test-user")
+	
 	// Setup mock writer
 	mw := &mockWriter{}
 	writer = mw
@@ -125,6 +150,7 @@ func TestHandleEventsSuccess(t *testing.T) {
 	}
 	body, _ := json.Marshal(event)
 	req, err := http.NewRequest("POST", "/events", bytes.NewBuffer(body))
+	req.Header.Set("Authorization", "Bearer "+token)
 	assert.NoError(t, err)
 
 	rr := httptest.NewRecorder()

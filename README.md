@@ -15,12 +15,14 @@ ScaleBreeze is a multi-service engineering showcase demonstrating how to archite
 - **Optimized Toolchain**: Utilized **uv** for ultra-fast, reproducible Python builds and **Go modules** for efficient dependency management.
 
 ### **Security-First Engineering**
+- **Stateless Authentication**: Integrated **JWT-based authorization** across both Python and Go services, ensuring secure, decentralized user verification.
 - **Infrastructure Hardening**: Architected Docker environments with **read-only root filesystems** and **non-privileged service users** to minimize the potential attack surface.
 - **Least-Privilege Data Access**: Isolated application data by migrating from superuser access to a restricted database role (`sb_app`) with granular permissions.
 - **Secure Transport**: Enforced **TLS 1.3** and high-grade cipher suites, protected by a 1-year **HSTS** policy and strict security headers (CSP, XFO, nosniff).
 
 ### **Observability & Operational Integrity**
-- **Analytics-Ready Logging**: Unified logs into structured JSON formats, including request timing, client data, and **Correlation IDs** (`X-Request-ID`) for distributed tracing.
+- **Distributed Context Tracing**: Implemented end-to-end **Request ID propagation** (`X-Request-ID`) across Nginx, Python, Kafka, and Go for seamless log correlation.
+- **Unified Structured Logging**: Standardized all backends to output structured JSON logs, enabling high-signal observability via ELK or Datadog.
 - **Robust Health Monitoring**: Integrated Docker healthchecks across the entire stack (Postgres, Redis, Kafka, API) to ensure automated recovery and reliability.
 - **Automated Evolutions**: Managed database schema versioning with **Alembic**, integrated directly into the container orchestration flow.
 

@@ -10,10 +10,12 @@ from contextlib import asynccontextmanager
 import asyncpg
 import redis.asyncio as redis
 import aiokafka
+import jwt
 from fastapi import FastAPI, Request, Depends, Response, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 
@@ -24,6 +26,8 @@ class Settings(BaseSettings):
     KAFKA_BOOTSTRAP_SERVERS: str = "kafka:9092"
     DB_POOL_MIN: int = 5
     DB_POOL_MAX: int = 50
+    JWT_SECRET: str = os.getenv("JWT_SECRET", "super-secret-key")
+    JWT_ALGORITHM: str = "HS256"
 
     class Config:
         env_file = ".env"
@@ -90,6 +94,23 @@ async def get_redis(request: Request):
 async def get_kafka_producer(request: Request):
     return request.app.state.kafka_producer
 
+# --- Auth Dependency ---
+security = HTTPBearer()
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        payload = jwt.decode(
+            credentials.credentials, 
+            settings.JWT_SECRET, 
+            algorithms=[settings.JWT_ALGORITHM]
+        )
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        return user_id
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
 # --- App Definition ---
 app = FastAPI(title="feed-service", lifespan=lifespan)
 
@@ -135,11 +156,12 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=500
     )
 
-# --- Middleware: Structured Logging ---
+# --- Middleware: Structured Logging & Tracing ---
 @app.middleware("http")
 async def structured_logging_middleware(request: Request, call_next):
     start_time = time.perf_counter()
     request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+    request.state.request_id = request_id  # Store in state for routes
     
     try:
         response = await call_next(request)
@@ -189,8 +211,11 @@ async def create_post(
     post: PostCreate, 
     db: asyncpg.Connection = Depends(get_db),
     r: redis.Redis = Depends(get_redis),
-    producer: aiokafka.AIOKafkaProducer = Depends(get_kafka_producer)
+    producer: aiokafka.AIOKafkaProducer = Depends(get_kafka_producer),
+    current_user: str = Depends(get_current_user),
+    request: Request = None
 ):
+    request_id = request.state.request_id
     post_id = uuid.uuid4()
     # 1. Persist to DB
     row = await db.fetchrow(
@@ -198,12 +223,13 @@ async def create_post(
         post_id, post.content, post.author
     )
     
-    # 2. Emit Event to Kafka (Fan-out)
+    # 2. Emit Event to Kafka (Fan-out) with Request ID
     event = {
         "post_id": str(post_id),
         "author": post.author,
         "action": "created",
-        "timestamp": datetime.now(timezone.utc).isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "request_id": request_id
     }
     await producer.send_and_wait("post-events", json.dumps(event).encode("utf-8"))
     
@@ -248,7 +274,8 @@ async def list_posts(
 async def get_user_feed(
     user_id: uuid.UUID,
     db: asyncpg.Connection = Depends(get_db),
-    r: redis.Redis = Depends(get_redis)
+    r: redis.Redis = Depends(get_redis),
+    current_user: str = Depends(get_current_user)
 ):
     cache_key = f"user:{user_id}:feed"
     cached_data = await r.get(cache_key)

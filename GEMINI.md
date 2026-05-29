@@ -17,9 +17,20 @@ This document serves as the primary instructional context for Gemini CLI and oth
 - **No Superuser**: Applications must NOT connect using the `postgres` superuser.
 - **App User**: Use the `sb_app` role (configured via `init-db/`) for all runtime application queries.
 
-## 📡 API Design Standards (Contract First)
+## API Design Standards (Contract First)
+
+### Context Tracing
+- **Request ID**: Nginx generates a unique `X-Request-ID` for every incoming request.
+- **Propagation**: The ID is passed to upstreams via headers and embedded in Kafka event payloads (`request_id` field).
+- **Observability**: All structured JSON logs must include the `request_id` to allow cross-service log correlation.
+
+### Stateless Security
+- **Authentication**: JWT-based stateless authentication is enforced on sensitive endpoints.
+- **Verification**: Services verify tokens using a shared `JWT_SECRET` stored in environment variables.
+- **Payload**: Tokens must contain a `sub` claim representing the `user_id`.
 
 ### Unified Error Format
+
 All services must return errors in this JSON shape:
 ```json
 {
