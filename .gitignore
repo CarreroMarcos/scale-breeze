@@ -37,6 +37,7 @@ pythonenv*
 *.secret
 
 # --- IDEs & Editors ---
+.gemini/
 .vscode/
 !.vscode/extensions.json
 .idea/
